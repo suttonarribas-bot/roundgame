@@ -145,7 +145,7 @@ function genMap(){
 /* ===== Entities ===== */
 function placePlayer(){ const r=rooms[0]; player.x=r.x; player.y=r.y; player.a=0; }
 function makeGuard(x,y){
-  return {x,y,a:0,spd:4, r:0.35, hp:40, state:'patrol', t:0, target:null, cool:0, rof:1.2, range:11, fov:Math.PI*0.6};
+  return {x,y,a:0,spd:4, r:0.35, hp:40, state:'patrol', t:0, target:null, cool:0, rof:1.2, range:11, fov:Math.PI*0.6, dead:false};
 }
 function populateGuards(){
   guards=[];
@@ -177,12 +177,6 @@ canvas.addEventListener('mousedown',()=>{ mouse.down=true; });
 addEventListener('mouseup',()=>{ mouse.down=false; });
 
 /* ===== Camera ===== */
-function worldToScreen(x, y, cam){
-  return [
-    (x * TILE - cam.x + canvas.width  / 2) | 0,
-    (y * TILE - cam.y + canvas.height / 2) | 0
-  ];
-}
 const cam={x:0,y:0}; function setCam(){ cam.x=player.x*TILE; cam.y=player.y*TILE; }
 
 /* ===== Combat ===== */
@@ -279,7 +273,7 @@ function step(dt){
   }
 
   // win
-  if(exit.open && Math.hypot(player.x-exit.x,player.y-exit.y)<0.7 && player.alive){
+  if(exit && exit.open && Math.hypot(player.x-exit.x,player.y-exit.y)<0.7 && player.alive){
     playing=false; won=true; showToast('Case closed!');
   }
 
@@ -292,15 +286,16 @@ function draw(){
   const W=canvas.width, H=canvas.height;
   ctx.clearRect(0,0,W,H);
 
-  // background grid/floor glow
+  // background
   ctx.fillStyle='#0b1220'; ctx.fillRect(0,0,W,H);
 
-  // draw tiles
+  // visible tile bounds
   const startX = Math.floor((cam.x-W/2)/TILE)-1;
   const startY = Math.floor((cam.y-H/2)/TILE)-1;
   const endX   = Math.floor((cam.x+W/2)/TILE)+2;
   const endY   = Math.floor((cam.y+H/2)/TILE)+2;
 
+  // tiles
   for(let y=startY; y<endY; y++){
     for(let x=startX; x<endX; x++){
       const t=tile(x,y);
@@ -320,11 +315,12 @@ function draw(){
     }
   }
 
-  // exit
-  if(exit){
-    const [ex,ey]=[exit.x*TILE - cam.x + W/2, exit.y*TILE - cam.y + H/2];
-    ctx.fillStyle = exit.open? '#2fd45f' : '#6a7a8f';
-    ctx.fillRect(ex+4,ey+4,TILE-8,TILE-8);
+  // exit (guarded)
+  if (exit) {
+    const ex = exit.x * TILE - cam.x + W/2;
+    const ey = exit.y * TILE - cam.y + H/2;
+    ctx.fillStyle = exit.open ? '#2fd45f' : '#6a7a8f';
+    ctx.fillRect(ex + 4, ey + 4, TILE - 8, TILE - 8);
   }
 
   // loot
@@ -341,7 +337,6 @@ function draw(){
     const sx=g.x*TILE - cam.x + W/2, sy=g.y*TILE - cam.y + H/2;
     ctx.fillStyle='#d95c5c';
     ctx.beginPath(); ctx.arc(sx,sy, g.r*TILE, 0, Math.PI*2); ctx.fill();
-    // gun direction
     ctx.strokeStyle='#ff9d9d'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.moveTo(sx,sy);
     ctx.lineTo(sx+Math.cos(g.a)*16, sy+Math.sin(g.a)*16); ctx.stroke();
@@ -377,9 +372,11 @@ function draw(){
     ctx.fillStyle = (map[id(x,y)]===T.WALL)?'#1b2537':'#0e1524';
     ctx.fillRect(mmx+x*sc, mmy+y*sc, sc, sc);
   }
-  // exit
-  ctx.fillStyle=exit.open?'#2fd45f':'#6a7a8f';
-  ctx.fillRect(mmx+exit.x*sc, mmy+exit.y*sc, sc, sc);
+  // minimap exit (guarded)
+  if (exit) {
+    ctx.fillStyle=exit.open?'#2fd45f':'#6a7a8f';
+    ctx.fillRect(mmx+exit.x*sc, mmy+exit.y*sc, sc, sc);
+  }
   // loot
   ctx.fillStyle='#ffd54a';
   for(const l of loot){ if(!l.taken) ctx.fillRect(mmx+l.x*sc, mmy+l.y*sc, sc, sc); }
@@ -390,7 +387,7 @@ function draw(){
   ctx.fillStyle='#6cc6ff';
   ctx.fillRect(mmx+(player.x|0)*sc, mmy+(player.y|0)*sc, sc, sc);
 
-  // messages
+  // win overlay
   if(won){
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,W,H);
     ctx.fillStyle='#a7f3d0'; ctx.textAlign='center'; ctx.textBaseline='middle';
