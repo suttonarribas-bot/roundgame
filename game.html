@@ -177,7 +177,12 @@ canvas.addEventListener('mousedown',()=>{ mouse.down=true; });
 addEventListener('mouseup',()=>{ mouse.down=false; });
 
 /* ===== Camera ===== */
-function worldToScreen(x,y,cam){ return [(x* TIL E - cam.x + canvas.width/2)|0, (y*TILE - cam.y + canvas.height/2)|0]; }
+function worldToScreen(x, y, cam){
+  return [
+    (x * TILE - cam.x + canvas.width  / 2) | 0,
+    (y * TILE - cam.y + canvas.height / 2) | 0
+  ];
+}
 const cam={x:0,y:0}; function setCam(){ cam.x=player.x*TILE; cam.y=player.y*TILE; }
 
 /* ===== Combat ===== */
