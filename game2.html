@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vice Streets — Levels & Shop</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin:0; height:100%; background:#0a0c12; color:#e7ebf3; font-family:system-ui, Arial, sans-serif; }
+  #wrap { display:flex; flex-direction:column; align-items:center; gap:8px; padding:8px; }
+  canvas { width:100vw; max-width:1100px; height:65vh; background:#05060a; border:1px solid #222a3a; border-radius:10px; touch-action:none; }
+  .hud { max-width:1100px; width:100%; display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:14px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .btn { padding:.5rem .8rem; border:1px solid #495268; background:#151a23; color:#e7ebf3; border-radius:8px; cursor:pointer; }
+  .btn[disabled]{opacity:.5; cursor:not-allowed}
+  .spacer{flex:1}
+  .toast{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:#111827;padding:.45rem .7rem;border:1px solid #384253;border-radius:8px;opacity:.95;z-index:40;display:none}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.66);display:none;align-items:center;justify-content:center;padding:16px;z-index:30}
+  .panel{background:#0f141d;border:1px solid #303849;border-radius:12px;padding:16px;max-width:980px;width:95%;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+  .panel h1,.panel h2{margin:0 0 8px 0}
+  .menu-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .kbd{display:inline-block;border:1px solid #4a536a;background:#111827;border-radius:6px;padding:0 .4rem;margin:0 .1rem}
+  .err{position:fixed;left:8px;right:8px;top:8px;z-index:50;background:#331316;border:1px solid #f17a7a;border-radius:10px;padding:10px;display:none;white-space:pre-wrap}
+  .shop-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:10px}
+  .card{border:1px solid #394155;background:#111722;border-radius:10px;padding:12px}
+  .meta{opacity:.8;font-size:13px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="1100" height="700" aria-label="Vice Streets view"></canvas>
+
+  <div class="hud" aria-label="Controls">
+    <div class="row">
+      <button id="homeBtn"   class="btn">Home</button>
+      <button id="pauseBtn"  class="btn">Pause</button>
+      <button id="restartBtn" class="btn">Restart Mission</button>
+      <button id="sfxBtn"    class="btn">SFX: On</button>
+    </div>
+    <div class="spacer"></div>
+    <div id="metaBar">Level 1 • $0</div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="homeOverlay" class="overlay" style="display:flex">
+  <div class="panel">
+    <h1>Vice Streets</h1>
+    <div class="meta" id="homeMeta"></div>
+    <ul>
+      <li>WASD move, mouse aim, click to fire</li>
+      <li>R reload, Shift sprint, Esc pause</li>
+      <li>Collect all evidence and reach the exit</li>
+    </ul>
+    <div class="menu-actions">
+      <button id="startMissionBtn" class="btn">Start Mission</button>
+      <button id="openShopBtn" class="btn">Shop</button>
+      <button id="resetSaveBtn" class="btn">Reset Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- SHOP -->
+<div id="shopOverlay" class="overlay">
+  <div class="panel">
+    <h2>Shop</h2>
+    <div class="meta">Cash: <strong id="shopCash">$0</strong></div>
+    <div id="shopGrid" class="shop-grid"></div>
+    <div class="menu-actions">
+      <button id="closeShopBtn" class="btn">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAUSE -->
+<div id="pauseOverlay" class="overlay">
+  <div class="panel">
+    <h2>Paused</h2>
+    <div class="menu-actions">
+      <button id="resumeBtn" class="btn">Resume</button>
+      <button id="restartBtn2" class="btn">Restart Mission</button>
+      <button id="toHomeBtn" class="btn">Home</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLEAR / FAIL -->
+<div id="clearOverlay" class="overlay">
+  <div class="panel">
+    <h2 id="clearTitle">Mission Complete</h2>
+    <div id="clearDetails" class="meta"></div>
+    <div class="menu-actions">
+      <button id="backHomeBtn" class="btn">Back to Home</button>
+      <button id="nextMissionBtn" class="btn">Next Mission</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+<div id="errbox" class="err"></div>
+
+<script>
+/* ===== Error overlay ===== */
+(()=>{const b=document.getElementById('errbox');const sh=m=>{b.style.display='block';b.textContent='ERROR:\\n'+m;console.error(m);};
+addEventListener('error',e=>sh((e.message||'Unknown error')+(e.filename?('\\n'+e.filename+':'+e.lineno+':'+e.colno):'')+(e.error&&e.error.stack?('\\n'+e.error.stack):'')));
+addEventListener('unhandledrejection',e=>sh('Unhandled Promise Rejection:\\n'+(e.reason&&e.reason.stack?e.reason.stack:JSON.stringify(e.reason))));})();
+
+/* ===== Utilities ===== */
+const $ = s => document.querySelector(s);
+const req = s => { const el=$(s); if(!el) throw new Error('Missing '+s); return el; };
+const clamp = (v,a,b) => Math.min(b,Math.max(a,v));
+const lerp = (a,b,t)=>a+(b-a)*t;
+function rand(n=1){ return Math.random()*n; }
+function randi(a,b){ return a + Math.floor(Math.random()*(b-a+1)); }
+
+/* ===== Canvas ===== */
+const canvas = req('#game');
+const ctx = canvas.getContext('2d');
+if(!ctx){ throw new Error('Canvas 2D context unavailable'); }
+function fitCanvas(){
+  const cssW=Math.min(innerWidth,1100), cssH=Math.floor(cssW*0.64);
+  canvas.style.width=cssW+'px'; canvas.style.height=cssH+'px';
+}
+fitCanvas(); addEventListener('resize',fitCanvas);
+
+/* ===== Save / Meta ===== */
+const SAVE_KEY='vice_save_v1';
+function loadSave(){
+  try{ const s=JSON.parse(localStorage.getItem(SAVE_KEY)||''); if(s&&s.level&&s.upgrades) return s; }catch{}
+  return { level:1, cash:0, upgrades:{hp:0, armor:0, rof:0, speed:0, mag:0} };
+}
+function commitSave(){ localStorage.setItem(SAVE_KEY, JSON.stringify(save)); updateMetaBar(); }
+function resetSave(){ localStorage.removeItem(SAVE_KEY); save = loadSave(); commitSave(); updateHome(); }
+let save = loadSave();
+
+function updateMetaBar(){
+  req('#metaBar').textContent = `Level ${save.level} • $${save.cash}`;
+}
+
+/* ===== Shop ===== */
+const SHOP = {
+  hp:    {name:'Vitality',   desc:'+20 max HP per level',     base:120, mult:1.5, max:10},
+  armor: {name:'Armor',      desc:'-8% damage taken / level', base:150, mult:1.5, max:8},
+  rof:   {name:'Fire Rate',  desc:'+10% fire rate / level',   base:130, mult:1.5, max:10},
+  speed: {name:'Mobility',   desc:'+8% move speed / level',   base:110, mult:1.5, max:10},
+  mag:   {name:'Magazine',   desc:'+20% mag size / level',    base:100, mult:1.5, max:10},
+};
+function costFor(key, level){ const spec=SHOP[key]; return Math.round(spec.base * Math.pow(spec.mult, level)); }
+function renderShop(){
+  req('#shopCash').textContent = `$${save.cash}`;
+  const grid=req('#shopGrid'); grid.innerHTML='';
+  for(const key of Object.keys(SHOP)){
+    const spec=SHOP[key]; const lvl=save.upgrades[key]||0; const nextCost=costFor(key,lvl);
+    const card=document.createElement('div'); card.className='card';
+    card.innerHTML = `
+      <strong>${spec.name}</strong>
+      <div class="meta">${spec.desc}</div>
+      <div style="margin-top:6px">Level: <strong>${lvl}</strong>${spec.max?` / ${spec.max}`:''}</div>
+      <div style="margin-top:6px">Cost: <strong>$${nextCost}</strong></div>
+      <div class="menu-actions" style="margin-top:8px">
+        <button class="btn" id="buy_${key}">Buy</button>
+      </div>`;
+    grid.appendChild(card);
+    const btn=card.querySelector(`#buy_${key}`);
+    const capped = spec.max && lvl>=spec.max;
+    btn.disabled = capped || save.cash < nextCost;
+    btn.textContent = capped ? 'Maxed' : 'Buy';
+    btn.onclick = ()=>{
+      if (capped) return;
+      if (save.cash < nextCost) return;
+      save.cash -= nextCost;
+      save.upgrades[key] = (save.upgrades[key]||0) + 1;
+      commitSave();
+      renderShop();
+    };
+  }
+}
+
+/* ===== Game State ===== */
+const TILE=28;
+const MAP_W=64, MAP_H=48;
+const T={WALL:1,FLOOR:0};
+let map = new Array(MAP_W*MAP_H).fill(T.WALL);
+const id = (x,y)=>y*MAP_W+x;
+const tile = (x,y)=> (x<0||y<0||x>=MAP_W||y>=MAP_H)?T.WALL:map[id(x|0,y|0)];
+
+const basePlayer = {spd:5.6,run:8.5,rof:4,mag:12,reserve:72,maxHp:100};
+const player = {x:5,y:5,a:0,r:0.35,hp:100,ammo:12,reload:0,reloadTime:1.0,cool:0,alive:true,have:0};
+function applyUpgrades(){
+  const u=save.upgrades;
+  player.maxHp = basePlayer.maxHp + 20*(u.hp||0);
+  const speedMul = 1 + 0.08*(u.speed||0);
+  player.spd = basePlayer.spd*speedMul;
+  player.run = basePlayer.run*speedMul;
+  player.rof = basePlayer.rof*(1+0.10*(u.rof||0));
+  const magMul = 1 + 0.20*(u.mag||0);
+  player.mag = Math.max(4, Math.round(basePlayer.mag*magMul));
+  player.reserve = Math.round(basePlayer.reserve*magMul);
+  player.hp = player.maxHp;
+  player.ammo = player.mag;
+  player.reload = 0; player.cool=0; player.have=0; player.alive=true;
+}
+
+let bullets=[], guards=[], loot=[], exit=null, playing=false, paused=false, won=false, lastSummary=null;
+
+const settings={sfx:true};
+function showToast(m,ms=1100){ const t=req('#toast'); t.textContent=m; t.style.display='block'; clearTimeout(t._); t._=setTimeout(()=>t.style.display='none',ms); }
+
+/* ===== SFX ===== */
+let ac=null; function AC(){ if(!settings.sfx) return null; if(!ac){ const C=window.AudioContext||window.webkitAudioContext; ac=C?new C():null; } if(ac&&ac.state==='suspended') ac.resume(); return ac; }
+function beep(freq=600,dur=0.06,type='square',vol=0.12){ const a=AC(); if(!a) return; const o=a.createOscillator(),g=a.createGain(); o.type=type; o.frequency.value=freq; g.gain.value=vol; o.connect(g); g.connect(a.destination); const t=a.currentTime; o.start(t); o.stop(t+dur); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur); }
+
+/* ===== Map Generation: rooms + corridors ===== */
+let rooms=[];
+function carveRect(x,y,w,h){ for(let yy=y;yy<y+h;yy++) for(let xx=x;xx<x+w;xx++) if(xx>1&&yy>1&&xx<MAP_W-1&&yy<MAP_H-1) map[id(xx,yy)]=T.FLOOR; }
+function genMap(){
+  map.fill(T.WALL); rooms=[];
+  const n=randi(8,12);
+  for(let i=0;i<n;i++){
+    const w=randi(6,12), h=randi(6,10);
+    const x=randi(2, MAP_W-w-3), y=randi(2, MAP_H-h-3);
+    carveRect(x,y,w,h); rooms.push({x:x+w/2,y:y+h/2});
+  }
+  rooms.sort((a,b)=>a.x-b.x);
+  for(let i=1;i<rooms.length;i++){
+    const A=rooms[i-1], B=rooms[i];
+    const x0=Math.round(A.x), y0=Math.round(A.y);
+    const x1=Math.round(B.x), y1=Math.round(B.y);
+    for(let x=Math.min(x0,x1); x<=Math.max(x0,x1); x++) map[id(x,y0)]=T.FLOOR;
+    for(let y=Math.min(y0,y1); y<=Math.max(y0,y1); y++) map[id(x1,y)]=T.FLOOR;
+  }
+  // loot
+  loot=[];
+  for(let i=0;i<3;i++){
+    const r=rooms[randi(0,rooms.length-1)];
+    loot.push({x:Math.round(r.x)+randi(-2,2), y:Math.round(r.y)+randi(-2,2), taken:false});
+  }
+  // exit far
+  let far=rooms[0], bestD=0;
+  for(const r of rooms){ const d=(r.x-rooms[0].x)**2+(r.y-rooms[0].y)**2; if(d>bestD){ bestD=d; far=r; } }
+  exit={x:Math.round(far.x), y:Math.round(far.y), open:false};
+}
+
+/* ===== Helpers for movement / valid cells ===== */
+function passCell(x, y){ return tile(x|0, y|0) === T.FLOOR; }
+function snapToFloor(p){
+  let x=p.x|0, y=p.y|0;
+  if (passCell(x,y)) return {x:x+0.5, y:y+0.5};
+  for (let r=1; r<=3; r++){
+    for (let yy=y-r; yy<=y+r; yy++){
+      for (let xx=x-r; xx<=x+r; xx++){
+        if (passCell(xx,yy)) return {x:xx+0.5, y:yy+0.5};
+      }
+    }
+  }
+  return {x:p.x, y:p.y};
+}
+function moveWithSlide(obj, vx, vy){
+  let moved=false;
+  if (passCell((obj.x+vx), obj.y)) { obj.x+=vx; moved=true; }
+  if (passCell(obj.x, (obj.y+vy))) { obj.y+=vy; moved=true; }
+  if (!moved){
+    if (Math.abs(vx)>Math.abs(vy)){
+      const ax=Math.sign(vx)*Math.max(Math.abs(vx)*0.6,0.001);
+      if(passCell(obj.x+ax,obj.y)){ obj.x+=ax; moved=true; }
+    }else{
+      const ay=Math.sign(vy)*Math.max(Math.abs(vy)*0.6,0.001);
+      if(passCell(obj.x,obj.y+ay)){ obj.y+=ay; moved=true; }
+    }
+  }
+  if(!moved){
+    const ang=Math.atan2(vy,vx)+(Math.random()<0.5?Math.PI/2:-Math.PI/2);
+    const s=Math.max(Math.abs(vx)+Math.abs(vy),0.004);
+    const sx=Math.cos(ang)*s, sy=Math.sin(ang)*s;
+    if(passCell(obj.x+sx,obj.y)) {obj.x+=sx; moved=true;}
+    if(passCell(obj.x,obj.y+sy)) {obj.y+=sy; moved=true;}
+  }
+  return moved;
+}
+
+/* ===== Entities ===== */
+function placePlayer(){ const r=rooms[0]; const s=snapToFloor({x:r.x,y:r.y}); player.x=s.x; player.y=s.y; player.a=0; }
+function makeGuard(x,y){
+  return {x,y,a:0,spd:4, r:0.35, hp:40, state:'patrol', t:0, target:null,
+          cool:0, rof:1.2, range:11, fov:Math.PI*0.6, dead:false, _still:0};
+}
+function scaleGuard(g, level){
+  g.hp  += 6*level;
+  g.spd += 0.03*level;
+  g.rof += 0.05*level;
+}
+function populateGuards(level){
+  guards=[];
+  const density = Math.min(0.75, 0.35 + level*0.03);
+  for(let i=1;i<rooms.length;i++){
+    const r=rooms[i];
+    if(Math.hypot(r.x-player.x, r.y-player.y)<6) continue;
+    if(Math.random()<density){
+      let gx=Math.round(r.x)+randi(-2,2), gy=Math.round(r.y)+randi(-2,2);
+      const s=snapToFloor({x:gx,y:gy}); gx=s.x; gy=s.y;
+      const g=makeGuard(gx,gy); scaleGuard(g, level); guards.push(g);
+    }
+  }
+}
+
+/* ===== LOS / ray ===== */
+function lineClear(x0,y0,x1,y1){
+  const dx=x1-x0, dy=y1-y0, steps=Math.ceil(Math.hypot(dx,dy)*3);
+  for(let i=0;i<=steps;i++){
+    const x=lerp(x0,x1,i/steps), y=lerp(y0,y1,i/steps);
+    if(tile(x|0,y|0)===T.WALL) return false;
+  }
+  return true;
+}
+
+/* ===== Input ===== */
+const keys={}; addEventListener('keydown',e=>{ keys[e.code]=true; if(e.code==='Escape'){ togglePause(true);} if(e.code==='KeyR'){ reload(); }});
+addEventListener('keyup',e=>{ keys[e.code]=false; });
+let mouse={x:0,y:0,down:false};
+canvas.addEventListener('mousemove',e=>{ const r=canvas.getBoundingClientRect(); mouse.x=(e.clientX-r.left)/r.width*canvas.width; mouse.y=(e.clientY-r.top)/r.height*canvas.height; });
+canvas.addEventListener('mousedown',()=>{ mouse.down=true; });
+addEventListener('mouseup',()=>{ mouse.down=false; });
+
+/* ===== Camera ===== */
+const cam={x:0,y:0}; function setCam(){ cam.x=player.x*TILE; cam.y=player.y*TILE; }
+
+/* ===== Combat ===== */
+function reload(){ if(player.reload>0) return; if(player.ammo>=player.mag) return; if(player.reserve<=0) return; player.reload=player.reloadTime; beep(300,0.08,'triangle',0.1); }
+function shoot(from, ang, speed, dmg, src){
+  const v= { x:from.x+Math.cos(ang)*0.65, y:from.y+Math.sin(ang)*0.65, vx:Math.cos(ang)*speed, vy:Math.sin(ang)*speed, dmg, life:0.9, src };
+  bullets.push(v); beep(src==='player'?900:600,0.04,'square',0.12);
+}
+function tryShootPlayer(){
+  if(player.cool>0||player.reload>0||!player.alive) return;
+  if(player.ammo<=0){ reload(); beep(120,0.05,'square',0.08); return; }
+  const ang = Math.atan2((mouse.y-canvas.height/2+cam.y)/TILE - player.y, (mouse.x-canvas.width/2+cam.x)/TILE - player.x);
+  shoot(player, ang, 18, 22, 'player');
+  player.cool=1/player.rof; player.ammo--;
+}
+
+/* ===== Update ===== */
+function step(dt){
+  if(!playing||paused) return;
+
+  // player aim
+  player.a = Math.atan2((mouse.y-canvas.height/2+cam.y)/TILE - player.y, (mouse.x-canvas.width/2+cam.x)/TILE - player.x);
+
+  // movement
+  const mv = (keys['ShiftLeft']||keys['ShiftRight'])?player.run:player.spd;
+  let vx=((keys['KeyD']?1:0)-(keys['KeyA']?1:0))*mv*dt;
+  let vy=((keys['KeyS']?1:0)-(keys['KeyW']?1:0))*mv*dt;
+  const mlen=Math.hypot(vx,vy); if(mlen>0){ vx/=mlen; vy/=mlen; vx*=mv*dt; vy*=mv*dt; }
+  moveWithSlide(player, vx, vy);
+
+  // shooting
+  if(mouse.down) tryShootPlayer();
+
+  // reload/cool
+  if(player.cool>0) player.cool=Math.max(0,player.cool-dt);
+  if(player.reload>0){ player.reload=Math.max(0,player.reload-dt); if(player.reload===0){ const need=player.mag-player.ammo; const take=Math.min(need,player.reserve); player.ammo+=take; player.reserve-=take; beep(500,0.06,'square',0.1);} }
+
+  // bullets
+  for(const b of bullets){
+    b.life-=dt; b.x+=b.vx*dt; b.y+=b.vy*dt;
+    if(tile(b.x|0,b.y|0)===T.WALL){ b.life=0; }
+    if(b.src==='player'){
+      for(const g of guards){ if(!g.dead && Math.hypot(g.x-b.x,g.y-b.y)<0.4){ g.hp-=b.dmg; b.life=0; if(g.hp<=0){ g.dead=true; beep(220,0.05,'triangle',0.1);} break; } }
+    }else{
+      if(player.alive && Math.hypot(player.x-b.x,player.y-b.y)<0.5){
+        // armor reduces damage
+        const armorLvl=save.upgrades.armor||0;
+        const mult=Math.max(0,1-0.08*armorLvl);
+        player.hp=Math.max(0,player.hp-b.dmg*mult); b.life=0; beep(140,0.05,'square',0.1);
+        if(player.hp<=0){ player.alive=false; showToast('You are down'); }
+      }
+    }
+  }
+  bullets=bullets.filter(b=>b.life>0);
+
+  // guards AI
+  for(const g of guards){
+    if(g.dead) continue;
+    g.cool=Math.max(0,g.cool-dt);
+    g.t+=dt;
+    const dx=player.x-g.x, dy=player.y-g.y, dist=Math.hypot(dx,dy);
+    const toP=Math.atan2(dy,dx);
+    const sees = dist<14 && Math.abs(((toP-g.a+Math.PI*3)%(Math.PI*2))-Math.PI) < g.fov/2 && lineClear(g.x,g.y,player.x,player.y);
+    if(sees && player.alive){ g.state='alert'; g.target={x:player.x,y:player.y}; }
+    if(g.state==='patrol'){
+      if(!g.target || Math.hypot(g.x-g.target.x,g.y-g.target.y)<0.4){
+        const ang=rand(Math.PI*2), len=randi(3,7);
+        const cand={x:clamp(g.x+Math.cos(ang)*len,2,MAP_W-3), y:clamp(g.y+Math.sin(ang)*len,2,MAP_H-3)};
+        g.target=snapToFloor(cand);
+      }
+    }
+    if(g.state==='alert'){ g.target={x:player.x,y:player.y}; }
+
+    // steer with slide + unstuck
+    if (g.target) {
+      const tx=g.target.x, ty=g.target.y;
+      const ang=Math.atan2(ty-g.y,tx-g.x); g.a=ang;
+      const sp=g.spd*dt; const vx=Math.cos(ang)*sp, vy=Math.sin(ang)*sp;
+      const bx=g.x, by=g.y; moveWithSlide(g, vx, vy);
+      const moved=Math.hypot(g.x-bx,g.y-by);
+      if(moved<0.005) g._still+=dt; else g._still=0;
+      if(g._still>1.0){
+        const dir=Math.random()<0.5?1:-1, escAng=ang+dir*Math.PI/2;
+        const cand={x:g.x+Math.cos(escAng)*randi(2,5), y:g.y+Math.sin(escAng)*randi(2,5)};
+        g.target=snapToFloor(cand); g.state='patrol'; g._still=0;
+      }
+    }
+
+    // fire
+    if(sees && dist<g.range && g.cool===0 && player.alive){
+      shoot(g, toP + (rand()-0.5)*0.12, 16, 12, 'guard'); g.cool=1/g.rof;
+    }
+  }
+
+  // loot
+  for(const l of loot){
+    if(!l.taken && Math.hypot(player.x-l.x,player.y-l.y)<0.6){
+      l.taken=true; player.have++; beep(880,0.05,'square',0.12); showToast(`Evidence ${player.have}/3`);
+      if(player.have===loot.length){ exit.open=true; showToast('Exit unlocked!',1400); }
+    }
+  }
+
+  // win / fail
+  if(exit && exit.open && Math.hypot(player.x-exit.x,player.y-exit.y)<0.7 && player.alive){
+    missionClear();
+  }
+  if(!player.alive){
+    missionFail();
+  }
+
+  setCam();
+}
+
+/* ===== Render ===== */
+function draw(){
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#0b1220'; ctx.fillRect(0,0,W,H);
+
+  const startX = Math.floor((cam.x-W/2)/TILE)-1;
+  const startY = Math.floor((cam.y-H/2)/TILE)-1;
+  const endX   = Math.floor((cam.x+W/2)/TILE)+2;
+  const endY   = Math.floor((cam.y+H/2)/TILE)+2;
+
+  for(let y=startY; y<endY; y++){
+    for(let x=startX; x<endX; x++){
+      const t=tile(x,y);
+      const sx = x*TILE - cam.x + W/2;
+      const sy = y*TILE - cam.y + H/2;
+      if(t===T.FLOOR){
+        ctx.fillStyle='#111a2b';
+        ctx.fillRect(sx,sy,TILE,TILE);
+        ctx.strokeStyle='rgba(255,255,255,0.03)';
+        ctx.strokeRect(sx+0.5,sy+0.5,TILE-1,TILE-1);
+      }else{
+        ctx.fillStyle='#1a2234';
+        ctx.fillRect(sx,sy,TILE,TILE);
+        ctx.strokeStyle='rgba(0,0,0,0.35)';
+        ctx.strokeRect(sx,sy,TILE,TILE);
+      }
+    }
+  }
+
+  // exit
+  if (exit) {
+    const ex = exit.x * TILE - cam.x + W/2;
+    const ey = exit.y * TILE - cam.y + H/2;
+    ctx.fillStyle = exit.open ? '#2fd45f' : '#6a7a8f';
+    ctx.fillRect(ex + 4, ey + 4, TILE - 8, TILE - 8);
+  }
+
+  // loot
+  for(const l of loot){
+    if(l.taken) continue;
+    const sx = l.x*TILE - cam.x + W/2, sy = l.y*TILE - cam.y + H/2;
+    ctx.fillStyle='#ffd54a';
+    ctx.beginPath(); ctx.arc(sx+TILE/2, sy+TILE/2, 6, 0, Math.PI*2); ctx.fill();
+  }
+
+  // guards
+  for(const g of guards){
+    if(g.dead) continue;
+    const sx=g.x*TILE - cam.x + W/2, sy=g.y*TILE - cam.y + H/2;
+    ctx.fillStyle='#d95c5c';
+    ctx.beginPath(); ctx.arc(sx,sy, g.r*TILE, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#ff9d9d'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(sx,sy);
+    ctx.lineTo(sx+Math.cos(g.a)*16, sy+Math.sin(g.a)*16); ctx.stroke();
+  }
+
+  // player
+  const px=player.x*TILE - cam.x + W/2, py=player.y*TILE - cam.y + H/2;
+  ctx.fillStyle=player.alive?'#6cc6ff':'#888';
+  ctx.beginPath(); ctx.arc(px,py, player.r*TILE, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#b9e2ff'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(px+Math.cos(player.a)*18, py+Math.sin(player.a)*18); ctx.stroke();
+
+  // bullets
+  ctx.fillStyle='#f0efe2';
+  for(const b of bullets){
+    const sx=b.x*TILE - cam.x + W/2, sy=b.y*TILE - cam.y + H/2;
+    ctx.fillRect(sx-2, sy-2, 4, 4);
+  }
+
+  // HUD
+  ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(10,10,320,86);
+  ctx.fillStyle='#e7ebf3'; ctx.font='bold 16px system-ui,Arial';
+  ctx.fillText(`Level: ${save.level}   Cash: $${save.cash}`, 16, 26);
+  ctx.fillText(`HP: ${Math.max(0,Math.ceil(player.hp))}/${player.maxHp}`, 16, 46);
+  ctx.fillText(`Ammo: ${player.ammo}/${player.mag}  •  Res: ${player.reserve}`, 16, 66);
+
+  // Minimap
+  const mw=MAP_W, mh=MAP_H, sc=3;
+  const mmx=W- (mw*sc+20), mmy=10;
+  ctx.fillStyle='rgba(0,0,0,0.45)'; ctx.fillRect(mmx-6,mmy-6,mw*sc+12,mh*sc+12);
+  for(let y=0;y<mh;y++) for(let x=0;x<mw;x++){
+    ctx.fillStyle = (map[id(x,y)]===T.WALL)?'#1b2537':'#0e1524';
+    ctx.fillRect(mmx+x*sc, mmy+y*sc, sc, sc);
+  }
+  if (exit) {
+    ctx.fillStyle=exit.open?'#2fd45f':'#6a7a8f';
+    ctx.fillRect(mmx+exit.x*sc, mmy+exit.y*sc, sc, sc);
+  }
+  ctx.fillStyle='#ffd54a'; for(const l of loot){ if(!l.taken) ctx.fillRect(mmx+l.x*sc, mmy+l.y*sc, sc, sc); }
+  ctx.fillStyle='#ff6464'; for(const g of guards){ if(!g.dead) ctx.fillRect(mmx+(g.x|0)*sc, mmy+(g.y|0)*sc, sc, sc); }
+  ctx.fillStyle='#6cc6ff'; ctx.fillRect(mmx+(player.x|0)*sc, mmy+(player.y|0)*sc, sc, sc);
+
+  if(won){
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#a7f3d0'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font='bold 38px system-ui,Arial'; ctx.fillText('CASE CLOSED', W/2, H/2-8);
+  }
+}
+
+/* ===== Mission Flow ===== */
+function newMission(){
+  won=false; playing=true; paused=false; bullets.length=0; guards.length=0;
+  applyUpgrades();
+  genMap(); placePlayer(); populateGuards(save.level); setCam();
+  updateMetaBar();
+}
+function missionClear(){
+  playing=false; won=true;
+  const kills=guards.filter(g=>g.dead).length;
+  const reward = 200 + save.level*50 + kills*2 + (player.have*50);
+  save.cash += reward;
+  save.level += 1;
+  commitSave();
+  lastSummary = {result:'clear', reward, kills, evidence:player.have, nextLevel:save.level};
+  showClearOverlay();
+}
+function missionFail(){
+  playing=false; won=false;
+  const penalty = Math.min(save.cash, Math.round(save.cash*0.10));
+  save.cash -= penalty; commitSave();
+  lastSummary = {result:'fail', penalty};
+  showClearOverlay();
+}
+
+/* ===== Overlays / UI ===== */
+function togglePause(show){ if(!playing) return; paused=(show===undefined)?!paused:show; req('#pauseOverlay').style.display=paused?'flex':'none'; }
+function showHome(){ req('#homeOverlay').style.display='flex'; updateHome(); playing=false; paused=false; }
+function updateHome(){
+  req('#homeMeta').textContent = `Level ${save.level} • Cash $${save.cash}`;
+}
+function openShop(){ renderShop(); req('#shopOverlay').style.display='flex'; }
+function closeShop(){ req('#shopOverlay').style.display='none'; updateHome(); }
+function showClearOverlay(){
+  const ov=req('#clearOverlay'); const title=req('#clearTitle'); const det=req('#clearDetails');
+  if(lastSummary.result==='clear'){
+    title.textContent='Mission Complete';
+    det.textContent = `Reward $${lastSummary.reward} • Kills ${lastSummary.kills} • Evidence ${lastSummary.evidence}/3 • Next up: Level ${lastSummary.nextLevel}`;
+    req('#nextMissionBtn').style.display='inline-block';
+  }else{
+    title.textContent='Mission Failed';
+    det.textContent = `Cash penalty $${lastSummary.penalty}`;
+    req('#nextMissionBtn').style.display='none';
+  }
+  ov.style.display='flex';
+}
+
+/* Buttons */
+req('#homeBtn').onclick=showHome;
+req('#toHomeBtn').onclick=showHome;
+req('#backHomeBtn').onclick=()=>{ req('#clearOverlay').style.display='none'; showHome(); };
+req('#nextMissionBtn').onclick=()=>{ req('#clearOverlay').style.display='none'; newMission(); };
+
+req('#startMissionBtn').onclick=()=>{ req('#homeOverlay').style.display='none'; newMission(); };
+req('#openShopBtn').onclick=openShop;
+req('#closeShopBtn').onclick=closeShop;
+req('#resetSaveBtn').onclick=()=>{ if(confirm('Reset save data?')){ resetSave(); } };
+
+req('#pauseBtn').onclick=()=>togglePause(true);
+req('#resumeBtn').onclick=()=>togglePause(false);
+req('#restartBtn').onclick=newMission;
+req('#restartBtn2').onclick=newMission;
+req('#sfxBtn').onclick=()=>{ settings.sfx=!settings.sfx; req('#sfxBtn').textContent='SFX: '+(settings.sfx?'On':'Off'); };
+
+/* ===== Loop ===== */
+let last=performance.now();
+function loop(ts){
+  const dt=Math.min(0.033,(ts-last)/1000); last=ts;
+  step(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* Init meta */
+updateMetaBar(); updateHome();
+</script>
+</body>
+</html>
