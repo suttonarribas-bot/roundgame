@@ -145,15 +145,21 @@ function genMap(){
 /* ===== Entities ===== */
 function placePlayer(){ const r=rooms[0]; player.x=r.x; player.y=r.y; player.a=0; }
 function makeGuard(x,y){
-  return {x,y,a:0,spd:4, r:0.35, hp:40, state:'patrol', t:0, target:null, cool:0, rof:1.2, range:11, fov:Math.PI*0.6, dead:false};
+  return {x,y,a:0,spd:4, r:0.35, hp:40, state:'patrol', t:0, target:null,
+          cool:0, rof:1.2, range:11, fov:Math.PI*0.6, dead:false,
+          _px:x, _py:y, _still:0};
 }
+
 function populateGuards(){
-  guards=[];
-  for(let i=1;i<rooms.length;i++){
-    const r=rooms[i];
-    if(Math.hypot(r.x-player.x, r.y-player.y)<6) continue;
-    if(Math.random()<0.75){
-      guards.push(makeGuard(Math.round(r.x)+randi(-2,2), Math.round(r.y)+randi(-2,2)));
+  guards = [];
+  for (let i=1;i<rooms.length;i++){
+    const r = rooms[i];
+    if (Math.hypot(r.x - player.x, r.y - player.y) < 6) continue;
+    if (Math.random() < 0.75){
+      let gx = Math.round(r.x) + randi(-2,2);
+      let gy = Math.round(r.y) + randi(-2,2);
+      if (!passCell(gx, gy)){ const s = snapToFloor({x:gx, y:gy}); gx = s.x; gy = s.y; }
+      guards.push(makeGuard(gx, gy));
     }
   }
 }
@@ -166,6 +172,52 @@ function lineClear(x0,y0,x1,y1){
     if(tile(x|0,y|0)===T.WALL) return false;
   }
   return true;
+}
+// Is a grid cell walkable?
+function passCell(x, y){ return tile(x|0, y|0) === T.FLOOR; }
+
+// Snap a point to the nearest floor cell (small radius search)
+function snapToFloor(p){
+  let x=p.x|0, y=p.y|0;
+  if (passCell(x,y)) return {x:x+0.5, y:y+0.5};
+  for (let r=1; r<=3; r++){
+    for (let yy=y-r; yy<=y+r; yy++){
+      for (let xx=x-r; xx<=x+r; xx++){
+        if (passCell(xx,yy)) return {x:xx+0.5, y:yy+0.5};
+      }
+    }
+  }
+  return {x:p.x, y:p.y};
+}
+
+// Move with wall sliding + perpendicular nudge if fully blocked
+function moveWithSlide(obj, vx, vy){
+  let moved = false;
+
+  if (passCell((obj.x+vx), obj.y)) { obj.x += vx; moved = true; }
+  if (passCell(obj.x, (obj.y+vy))) { obj.y += vy; moved = true; }
+
+  if (!moved){
+    // try the stronger axis only
+    if (Math.abs(vx) > Math.abs(vy)){
+      const ax = Math.sign(vx) * Math.max(Math.abs(vx)*0.6, 0.001);
+      if (passCell(obj.x+ax, obj.y)) { obj.x += ax; moved = true; }
+    } else {
+      const ay = Math.sign(vy) * Math.max(Math.abs(vy)*0.6, 0.001);
+      if (passCell(obj.x, obj.y+ay)) { obj.y += ay; moved = true; }
+    }
+  }
+
+  if (!moved){
+    // last resort: step a bit perpendicular to the desired direction
+    const ang = Math.atan2(vy, vx) + (Math.random() < 0.5 ? Math.PI/2 : -Math.PI/2);
+    const s = Math.max(Math.abs(vx)+Math.abs(vy), 0.004);
+    const sx = Math.cos(ang) * s, sy = Math.sin(ang) * s;
+    if (passCell(obj.x+sx, obj.y)) { obj.x += sx; moved = true; }
+    if (passCell(obj.x, obj.y+sy)) { obj.y += sy; moved = true; }
+  }
+
+  return moved;
 }
 
 /* ===== Input ===== */
@@ -239,23 +291,49 @@ function step(dt){
     const toP=Math.atan2(dy,dx);
     const sees = dist<14 && Math.abs(((toP-g.a+Math.PI*3)%(Math.PI*2))-Math.PI) < g.fov/2 && lineClear(g.x,g.y,player.x,player.y);
     if(sees && player.alive){ g.state='alert'; g.target={x:player.x,y:player.y}; }
-    if(g.state==='patrol'){
-      if(!g.target || Math.hypot(g.x-g.target.x,g.y-g.target.y)<0.4){ // pick new waypoint
-        const ang=rand(Math.PI*2); const len= randi(3,7);
-        g.target={x: clamp(g.x+Math.cos(ang)*len,2,MAP_W-3), y: clamp(g.y+Math.sin(ang)*len,2,MAP_H-3)};
-      }
-    }
+   if (g.state === 'patrol') {
+  if (!g.target || Math.hypot(g.x - g.target.x, g.y - g.target.y) < 0.4) {
+    const ang = rand(Math.PI * 2), len = randi(3,7);
+    const cand = {
+      x: clamp(g.x + Math.cos(ang) * len, 2, MAP_W - 3),
+      y: clamp(g.y + Math.sin(ang) * len, 2, MAP_H - 3)
+    };
+    g.target = snapToFloor(cand); // <= ensures waypoint is a floor tile
+  }
+}
+
     if(g.state==='alert'){ g.target={x:player.x,y:player.y}; }
 
-    // steer toward target with wall collision
-    if(g.target){
-      const tx=g.target.x, ty=g.target.y;
-      const ang=Math.atan2(ty-g.y,tx-g.x);
-      g.a=ang;
-      let gvx=Math.cos(ang)*g.spd*dt, gvy=Math.sin(ang)*g.spd*dt;
-      if(tile((g.x+gvx)|0,g.y|0)===T.FLOOR) g.x+=gvx;
-      if(tile(g.x|0,(g.y+gvy)|0)===T.FLOOR) g.y+=gvy;
-    }
+// steer toward target with wall sliding + unstuck
+if (g.target) {
+  const tx = g.target.x, ty = g.target.y;
+  const ang = Math.atan2(ty - g.y, tx - g.x);
+  g.a = ang;
+
+  const sp = g.spd * dt;
+  const vx = Math.cos(ang) * sp;
+  const vy = Math.sin(ang) * sp;
+
+  const bx = g.x, by = g.y;          // before move
+  moveWithSlide(g, vx, vy);          // <= helper from step 1
+
+  const moved = Math.hypot(g.x - bx, g.y - by);
+  if (moved < 0.005) g._still += dt; // <= needs _still from step 3
+  else g._still = 0;
+
+  // If stuck for a while, pick a perpendicular escape waypoint
+  if (g._still > 1.0) {
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const escAng = ang + dir * Math.PI/2;
+    const cand = {
+      x: g.x + Math.cos(escAng) * randi(2,5),
+      y: g.y + Math.sin(escAng) * randi(2,5)
+    };
+    g.target = snapToFloor(cand);    // <= helper from step 1
+    g.state = 'patrol';
+    g._still = 0;
+  }
+}
 
     // fire at player if close & LOS
     if(sees && dist<g.range && g.cool===0 && player.alive){
