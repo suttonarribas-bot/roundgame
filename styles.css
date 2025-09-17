@@ -339,42 +339,125 @@ body {
 }
 
 .weapon-card {
-    background: rgba(0, 0, 0, 0.5);
-    border: 1px solid var(--neon-cyan);
-    border-radius: 5px;
-    padding: 1rem;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border: 2px solid var(--neon-cyan);
+    border-radius: 10px;
+    padding: 15px;
+    margin: 10px;
     text-align: center;
-    transition: all 0.3s ease;
     cursor: pointer;
+    transition: all 0.3s ease;
+    min-width: 200px;
+    position: relative;
+    overflow: hidden;
 }
 
 .weapon-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0, 255, 255, 0.3);
     border-color: var(--neon-pink);
-    box-shadow: 0 0 15px rgba(255, 0, 128, 0.3);
-    transform: translateY(-2px);
 }
 
 .weapon-card.owned {
     border-color: var(--success-green);
-    background: rgba(68, 255, 68, 0.1);
+    background: linear-gradient(135deg, #0a2e0a, #1a4a1a);
 }
 
 .weapon-card.selected {
-    border-color: var(--accent-gold);
-    box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
+    border-color: var(--neon-pink);
+    background: linear-gradient(135deg, #2e0a2e, #4a1a4a);
+    box-shadow: 0 0 20px rgba(255, 0, 128, 0.5);
+    animation: pulse 2s infinite;
+}
+
+.weapon-icon {
+    font-size: 24px;
+    margin-bottom: 10px;
+    display: block;
 }
 
 .weapon-name {
     color: var(--neon-cyan);
-    font-size: 1.1rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 10px;
 }
 
 .weapon-stats {
-    color: var(--text-gray);
-    font-size: 0.9rem;
-    margin-bottom: 0.5rem;
+    color: var(--text-white);
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.weapon-stats .stat {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    padding: 2px 0;
+}
+
+.weapon-stats .stat-label {
+    color: #aaaaaa;
+}
+
+.weapon-stats .stat-value {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+.weapon-price {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--accent-gold);
+    margin-bottom: 10px;
+}
+
+.weapon-price.insufficient-funds {
+    color: var(--danger-red);
+}
+
+.weapon-action {
+    font-size: 14px;
+    font-weight: bold;
+    padding: 8px 16px;
+    border-radius: 5px;
+    background: linear-gradient(135deg, var(--neon-pink), #ff4080);
+    color: var(--text-white);
+    margin-top: 10px;
+    transition: all 0.3s ease;
+}
+
+.weapon-card.owned .weapon-action {
+    background: linear-gradient(135deg, var(--success-green), #40ff40);
+}
+
+.weapon-card.selected .weapon-action {
+    background: linear-gradient(135deg, var(--neon-pink), #ff4080);
+    animation: pulse 1s infinite;
+}
+
+/* Feedback Animations */
+@keyframes fadeOut {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 0, 128, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(255, 0, 128, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 0, 128, 0);
+    }
 }
 
 .weapon-price {

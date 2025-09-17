@@ -632,25 +632,86 @@ class ViceStreetsGame {
             this.player.ammo--;
             this.lastShot = now;
             
-            // Create bullet
+            // Create bullet with weapon-specific properties
             const bullet = {
                 x: this.player.x + this.player.width / 2,
                 y: this.player.y + this.player.height / 2,
                 angle: this.player.angle,
-                speed: 8,
+                speed: this.getBulletSpeed(weapon),
                 damage: weapon.damage,
                 owner: 'player',
-                life: 120
+                life: this.getBulletLife(weapon),
+                weaponType: this.player.weapon,
+                size: this.getBulletSize(weapon)
             };
             this.bullets.push(bullet);
             
-            // Create muzzle flash
-            this.createParticles(bullet.x, bullet.y, 'muzzle');
+            // Create weapon-specific effects
+            this.createWeaponEffects(bullet, weapon);
             
             // Play shoot sound
             if (window.audioManager) {
                 window.audioManager.playSound('shoot');
             }
+        }
+    }
+    
+    getBulletSpeed(weapon) {
+        switch (weapon.name) {
+            case 'Pistol': return 8;
+            case 'Shotgun': return 6;
+            case 'SMG': return 10;
+            case 'Assault Rifle': return 12;
+            default: return 8;
+        }
+    }
+    
+    getBulletLife(weapon) {
+        switch (weapon.name) {
+            case 'Pistol': return 120;
+            case 'Shotgun': return 80;
+            case 'SMG': return 100;
+            case 'Assault Rifle': return 150;
+            default: return 120;
+        }
+    }
+    
+    getBulletSize(weapon) {
+        switch (weapon.name) {
+            case 'Pistol': return 2;
+            case 'Shotgun': return 3;
+            case 'SMG': return 1.5;
+            case 'Assault Rifle': return 2.5;
+            default: return 2;
+        }
+    }
+    
+    createWeaponEffects(bullet, weapon) {
+        // Muzzle flash
+        this.createParticles(bullet.x, bullet.y, 'muzzle');
+        
+        // Shotgun spread
+        if (weapon.name === 'Shotgun') {
+            for (let i = 0; i < 5; i++) {
+                const spreadAngle = bullet.angle + (Math.random() - 0.5) * 0.5;
+                const spreadBullet = {
+                    x: bullet.x,
+                    y: bullet.y,
+                    angle: spreadAngle,
+                    speed: bullet.speed * 0.8,
+                    damage: bullet.damage * 0.6,
+                    owner: 'player',
+                    life: bullet.life * 0.7,
+                    weaponType: 'shotgun_pellet',
+                    size: 1.5
+                };
+                this.bullets.push(spreadBullet);
+            }
+        }
+        
+        // SMG rapid fire effect
+        if (weapon.name === 'SMG' && Math.random() < 0.3) {
+            this.createParticles(bullet.x, bullet.y, 'spark');
         }
     }
     
@@ -909,16 +970,41 @@ class ViceStreetsGame {
     
     drawEnemies() {
         for (let enemy of this.enemies) {
-            // Enemy body
+            this.ctx.save();
+            this.ctx.translate(enemy.x + enemy.width/2, enemy.y + enemy.height/2);
+            this.ctx.rotate(enemy.angle);
+            
+            // Enemy body - improved character model
             this.ctx.fillStyle = '#ff4444';
             this.ctx.strokeStyle = '#aa0000';
             this.ctx.lineWidth = 2;
             
-            this.ctx.save();
-            this.ctx.translate(enemy.x + enemy.width/2, enemy.y + enemy.height/2);
-            this.ctx.rotate(enemy.angle);
+            // Main body
             this.ctx.fillRect(-enemy.width/2, -enemy.height/2, enemy.width, enemy.height);
             this.ctx.strokeRect(-enemy.width/2, -enemy.height/2, enemy.width, enemy.height);
+            
+            // Head
+            this.ctx.fillStyle = '#ff6666';
+            this.ctx.fillRect(-enemy.width/2 + 2, -enemy.height/2 - 4, enemy.width - 4, 6);
+            
+            // Arms
+            this.ctx.fillStyle = '#ff3333';
+            this.ctx.fillRect(-enemy.width/2 - 3, -enemy.height/2 + 2, 4, 8);
+            this.ctx.fillRect(enemy.width/2 - 1, -enemy.height/2 + 2, 4, 8);
+            
+            // Legs
+            this.ctx.fillRect(-enemy.width/2 + 2, enemy.height/2 - 2, 3, 6);
+            this.ctx.fillRect(enemy.width/2 - 5, enemy.height/2 - 2, 3, 6);
+            
+            // Weapon in hand
+            this.ctx.fillStyle = '#666666';
+            this.ctx.fillRect(enemy.width/2 - 1, -2, 8, 2);
+            
+            // Eyes
+            this.ctx.fillStyle = '#ffffff';
+            this.ctx.fillRect(-enemy.width/2 + 3, -enemy.height/2 - 2, 2, 2);
+            this.ctx.fillRect(enemy.width/2 - 5, -enemy.height/2 - 2, 2, 2);
+            
             this.ctx.restore();
             
             // Health bar
@@ -928,42 +1014,113 @@ class ViceStreetsGame {
                 const healthPercent = enemy.health / enemy.maxHealth;
                 
                 this.ctx.fillStyle = '#000000';
-                this.ctx.fillRect(enemy.x - 5, enemy.y - 10, barWidth, barHeight);
+                this.ctx.fillRect(enemy.x - 5, enemy.y - 15, barWidth, barHeight);
                 
                 this.ctx.fillStyle = '#ff0000';
-                this.ctx.fillRect(enemy.x - 5, enemy.y - 10, barWidth * healthPercent, barHeight);
+                this.ctx.fillRect(enemy.x - 5, enemy.y - 15, barWidth * healthPercent, barHeight);
             }
         }
     }
     
     drawPlayer() {
-        // Player body
-        this.ctx.fillStyle = this.player.invulnerable > 0 ? '#ffffff' : '#00aaff';
-        this.ctx.strokeStyle = '#0088cc';
-        this.ctx.lineWidth = 2;
-        
         this.ctx.save();
         this.ctx.translate(this.player.x + this.player.width/2, this.player.y + this.player.height/2);
         this.ctx.rotate(this.player.angle);
+        
+        // Player body - improved character model
+        const invulColor = this.player.invulnerable > 0;
+        this.ctx.fillStyle = invulColor ? '#ffffff' : '#00aaff';
+        this.ctx.strokeStyle = invulColor ? '#cccccc' : '#0088cc';
+        this.ctx.lineWidth = 2;
+        
+        // Main body
         this.ctx.fillRect(-this.player.width/2, -this.player.height/2, this.player.width, this.player.height);
         this.ctx.strokeRect(-this.player.width/2, -this.player.height/2, this.player.width, this.player.height);
         
-        // Weapon direction indicator
-        this.ctx.fillStyle = '#ffaa00';
-        this.ctx.fillRect(this.player.width/2 - 2, -2, 8, 4);
+        // Head
+        this.ctx.fillStyle = invulColor ? '#ffffff' : '#66ccff';
+        this.ctx.fillRect(-this.player.width/2 + 2, -this.player.height/2 - 4, this.player.width - 4, 6);
+        
+        // Arms
+        this.ctx.fillStyle = invulColor ? '#ffffff' : '#0099dd';
+        this.ctx.fillRect(-this.player.width/2 - 3, -this.player.height/2 + 2, 4, 8);
+        this.ctx.fillRect(this.player.width/2 - 1, -this.player.height/2 + 2, 4, 8);
+        
+        // Legs
+        this.ctx.fillRect(-this.player.width/2 + 2, this.player.height/2 - 2, 3, 6);
+        this.ctx.fillRect(this.player.width/2 - 5, this.player.height/2 - 2, 3, 6);
+        
+        // Current weapon in hand
+        const weapon = this.weapons[this.player.weapon];
+        this.ctx.fillStyle = '#666666';
+        this.ctx.fillRect(this.player.width/2 - 1, -2, 8, 2);
+        
+        // Weapon-specific details
+        if (weapon.name === 'Shotgun') {
+            this.ctx.fillRect(this.player.width/2 + 6, -3, 4, 4);
+        } else if (weapon.name === 'SMG') {
+            this.ctx.fillRect(this.player.width/2 + 6, -1, 6, 2);
+        } else if (weapon.name === 'Assault Rifle') {
+            this.ctx.fillRect(this.player.width/2 + 6, -2, 8, 2);
+            this.ctx.fillRect(this.player.width/2 + 12, -1, 2, 2);
+        }
+        
+        // Eyes
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillRect(-this.player.width/2 + 3, -this.player.height/2 - 2, 2, 2);
+        this.ctx.fillRect(this.player.width/2 - 5, -this.player.height/2 - 2, 2, 2);
+        
+        // Police badge
+        this.ctx.fillStyle = '#ffdd00';
+        this.ctx.fillRect(-2, -this.player.height/2 + 4, 4, 3);
+        
         this.ctx.restore();
     }
     
     drawBullets() {
-        this.ctx.fillStyle = '#ffff00';
-        this.ctx.strokeStyle = '#ffaa00';
-        this.ctx.lineWidth = 1;
-        
         for (let bullet of this.bullets) {
+            // Weapon-specific bullet colors and effects
+            let bulletColor = '#ffff00';
+            let strokeColor = '#ffaa00';
+            
+            switch (bullet.weaponType) {
+                case 'pistol':
+                    bulletColor = '#ffff00';
+                    strokeColor = '#ffaa00';
+                    break;
+                case 'shotgun':
+                case 'shotgun_pellet':
+                    bulletColor = '#ff8800';
+                    strokeColor = '#ff4400';
+                    break;
+                case 'smg':
+                    bulletColor = '#00ffff';
+                    strokeColor = '#0088aa';
+                    break;
+                case 'rifle':
+                    bulletColor = '#ff00ff';
+                    strokeColor = '#aa00aa';
+                    break;
+            }
+            
+            this.ctx.fillStyle = bulletColor;
+            this.ctx.strokeStyle = strokeColor;
+            this.ctx.lineWidth = 1;
+            
+            // Draw bullet with weapon-specific size
             this.ctx.beginPath();
-            this.ctx.arc(bullet.x, bullet.y, 2, 0, Math.PI * 2);
+            this.ctx.arc(bullet.x, bullet.y, bullet.size || 2, 0, Math.PI * 2);
             this.ctx.fill();
             this.ctx.stroke();
+            
+            // Add bullet trail effect
+            this.ctx.save();
+            this.ctx.globalAlpha = 0.3;
+            this.ctx.fillStyle = bulletColor;
+            this.ctx.beginPath();
+            this.ctx.arc(bullet.x, bullet.y, (bullet.size || 2) * 1.5, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.restore();
         }
     }
     
@@ -1077,28 +1234,57 @@ function restartMission() {
 
 function populateWeaponShop() {
     const weaponGrid = document.getElementById('weaponGrid');
+    const shopCash = document.getElementById('shopCash');
     weaponGrid.innerHTML = '';
+    
+    // Update cash display
+    shopCash.textContent = game.cash;
     
     for (let weaponId in game.weapons) {
         const weapon = game.weapons[weaponId];
         const card = document.createElement('div');
         card.className = `weapon-card ${weapon.owned ? 'owned' : ''} ${weapon.selected ? 'selected' : ''}`;
         
+        // Add weapon-specific icons
+        const weaponIcon = getWeaponIcon(weapon.name);
+        const canAfford = game.cash >= weapon.cost;
+        
         card.innerHTML = `
+            <div class="weapon-icon">${weaponIcon}</div>
             <div class="weapon-name">${weapon.name}</div>
             <div class="weapon-stats">
-                Damage: ${weapon.damage}<br>
-                Fire Rate: ${weapon.fireRate}ms<br>
-                Range: ${weapon.range}<br>
-                Ammo: ${weapon.maxAmmo}
+                <div class="stat">
+                    <span class="stat-label">Damage:</span>
+                    <span class="stat-value">${weapon.damage}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Fire Rate:</span>
+                    <span class="stat-value">${weapon.fireRate}ms</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Range:</span>
+                    <span class="stat-value">${weapon.range}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Ammo:</span>
+                    <span class="stat-value">${weapon.maxAmmo}</span>
+                </div>
             </div>
-            <div class="weapon-price">$${weapon.cost}</div>
+            <div class="weapon-price ${!canAfford && !weapon.owned ? 'insufficient-funds' : ''}">
+                ${weapon.owned ? 'OWNED' : `$${weapon.cost}`}
+            </div>
+            <div class="weapon-action">
+                ${weapon.owned ? 
+                    (weapon.selected ? 'EQUIPPED' : 'EQUIP') : 
+                    (canAfford ? 'BUY' : 'INSUFFICIENT FUNDS')
+                }
+            </div>
         `;
         
         card.onclick = () => {
             if (weapon.owned) {
                 selectWeapon(weaponId);
-            } else if (game.cash >= weapon.cost) {
+            } else if (canAfford) {
                 buyWeapon(weaponId);
             }
         };
@@ -1107,12 +1293,34 @@ function populateWeaponShop() {
     }
 }
 
+function getWeaponIcon(weaponName) {
+    switch (weaponName) {
+        case 'Pistol': return '🔫';
+        case 'Shotgun': return '🔫';
+        case 'SMG': return '🔫';
+        case 'Assault Rifle': return '🔫';
+        default: return '🔫';
+    }
+}
+
 function buyWeapon(weaponId) {
     const weapon = game.weapons[weaponId];
-    if (game.cash >= weapon.cost) {
+    if (game.cash >= weapon.cost && !weapon.owned) {
         game.cash -= weapon.cost;
         weapon.owned = true;
+        
+        // Auto-equip the weapon after purchase
+        selectWeapon(weaponId);
+        
+        // Show purchase feedback
+        showPurchaseFeedback(weapon.name);
+        
         populateWeaponShop();
+        
+        // Play purchase sound
+        if (window.audioManager) {
+            window.audioManager.playSound('purchase');
+        }
     }
 }
 
@@ -1128,7 +1336,73 @@ function selectWeapon(weaponId) {
     game.player.ammo = game.weapons[weaponId].ammo;
     game.player.maxAmmo = game.weapons[weaponId].maxAmmo;
     
+    // Show equip feedback
+    showEquipFeedback(game.weapons[weaponId].name);
+    
     populateWeaponShop();
+    
+    // Play equip sound
+    if (window.audioManager) {
+        window.audioManager.playSound('equip');
+    }
+}
+
+function showPurchaseFeedback(weaponName) {
+    // Create temporary feedback element
+    const feedback = document.createElement('div');
+    feedback.className = 'purchase-feedback';
+    feedback.textContent = `Purchased ${weaponName}!`;
+    feedback.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #00ff00;
+        color: #000;
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-weight: bold;
+        z-index: 1000;
+        animation: fadeOut 2s ease-out forwards;
+    `;
+    
+    document.body.appendChild(feedback);
+    
+    // Remove after animation
+    setTimeout(() => {
+        if (feedback.parentNode) {
+            feedback.parentNode.removeChild(feedback);
+        }
+    }, 2000);
+}
+
+function showEquipFeedback(weaponName) {
+    // Create temporary feedback element
+    const feedback = document.createElement('div');
+    feedback.className = 'equip-feedback';
+    feedback.textContent = `Equipped ${weaponName}`;
+    feedback.style.cssText = `
+        position: fixed;
+        top: 40%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #0088ff;
+        color: #fff;
+        padding: 8px 16px;
+        border-radius: 5px;
+        font-weight: bold;
+        z-index: 1000;
+        animation: fadeOut 1.5s ease-out forwards;
+    `;
+    
+    document.body.appendChild(feedback);
+    
+    // Remove after animation
+    setTimeout(() => {
+        if (feedback.parentNode) {
+            feedback.parentNode.removeChild(feedback);
+        }
+    }, 1500);
 }
 
 // Initialize game when page loads
