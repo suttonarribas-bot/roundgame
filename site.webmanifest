@@ -1,0 +1,24 @@
+{
+    "name": "Miami Vice: Vice Streets",
+    "short_name": "Vice Streets",
+    "description": "A Miami Vice-inspired top-down shooter game with realistic mechanics and 80s aesthetics",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0a0a0a",
+    "theme_color": "#ff0080",
+    "orientation": "landscape",
+    "icons": [
+        {
+            "src": "/favicon-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/favicon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ],
+    "categories": ["games", "entertainment"],
+    "lang": "en"
+}

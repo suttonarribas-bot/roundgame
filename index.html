@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Round Game - Miami Vice: Vice Streets - Top-Down Shooter Game</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Experience the neon-soaked streets of Miami in this 80s-inspired top-down shooter. Drive vehicles, use cover, and eliminate criminals in Vice Streets.">
+    <meta name="keywords" content="miami vice, top down shooter, 80s game, neon, synthwave, arcade game, javascript game, html5 game">
+    <meta name="author" content="Miami Vice Game Developer">
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="Round Game - Miami Vice: Vice Streets - Top-Down Shooter Game">
+    <meta property="og:description" content="Experience the neon-soaked streets of Miami in this 80s-inspired top-down shooter. Drive vehicles, use cover, and eliminate criminals.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://suttonarribas-bot.github.io/roundgame/">
+    <meta property="og:image" content="https://suttonarribas-bot.github.io/roundgame/og-image.png">
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Round Game - Miami Vice: Vice Streets">
+    <meta name="twitter:description" content="Experience the neon-soaked streets of Miami in this 80s-inspired top-down shooter.">
+    <meta name="twitter:image" content="https://suttonarribas-bot.github.io/roundgame/og-image.png">
+    
+    <!-- Favicon and PWA -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="theme-color" content="#ff0080">
+    
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Preload critical resources -->
+    <link rel="preload" href="game.js" as="script">
+    <link rel="preload" href="audio.js" as="script">
+    <link rel="preload" href="vehicles.js" as="script">
+</head>
+<body>
+    <div id="gameContainer">
+        <!-- Main Menu -->
+        <div id="mainMenu" class="screen active">
+            <div class="title-container">
+                <h1 class="game-title">ROUND GAME</h1>
+                <h2 class="subtitle">MIAMI VICE: VICE STREETS</h2>
+                <div class="neon-line"></div>
+            </div>
+            <div class="menu-buttons">
+                <button class="menu-btn" onclick="startGame()">START MISSION</button>
+                <button class="menu-btn" onclick="showShop()">WEAPON SHOP</button>
+                <button class="menu-btn" onclick="showSettings()">SETTINGS</button>
+            </div>
+            <div class="credits">
+                <p>WASD: Move | Mouse: Aim | Click: Fire | R: Reload | Shift: Sprint</p>
+                <p>E: Enter/Exit Vehicle | Use cover for protection</p>
+            </div>
+        </div>
+
+        <!-- Game Screen -->
+        <div id="gameScreen" class="screen">
+            <canvas id="gameCanvas" width="1200" height="800"></canvas>
+            <div id="hud">
+                <div class="hud-left">
+                    <div class="health-bar">
+                        <span>HEALTH</span>
+                        <div class="bar">
+                            <div id="healthFill" class="fill"></div>
+                        </div>
+                    </div>
+                    <div class="ammo-counter">
+                        <span id="ammoDisplay">30/120</span>
+                    </div>
+                </div>
+                <div class="hud-center">
+                    <div class="mission-info">
+                        <h3 id="missionTitle">MISSION: DRUG BUST</h3>
+                        <p id="missionObjective">Collect evidence and eliminate targets</p>
+                        <div id="vehicleStatus" class="vehicle-status" style="display: none;">
+                            <span>VEHICLE MODE: <span id="vehicleType">POLICE CRUISER</span></span>
+                            <div class="vehicle-health">
+                                <span>VEHICLE HEALTH</span>
+                                <div class="bar">
+                                    <div id="vehicleHealthFill" class="fill vehicle-fill"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="coverStatus" class="cover-status" style="display: none;">
+                            <span>IN COVER - DAMAGE REDUCED</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="hud-right">
+                    <div class="cash-display">
+                        <span>CASH: $<span id="cashAmount">0</span></span>
+                    </div>
+                    <div class="score-display">
+                        <span>SCORE: <span id="scoreAmount">0</span></span>
+                    </div>
+                </div>
+            </div>
+            <div id="pauseMenu" class="overlay">
+                <div class="pause-content">
+                    <h2>PAUSED</h2>
+                    <button class="menu-btn" onclick="resumeGame()">RESUME</button>
+                    <button class="menu-btn" onclick="restartMission()">RESTART</button>
+                    <button class="menu-btn" onclick="showMainMenu()">MAIN MENU</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Shop Screen -->
+        <div id="shopScreen" class="screen">
+            <div class="shop-container">
+                <h2>WEAPON SHOP</h2>
+                <div class="cash-display">CASH: $<span id="shopCash">0</span></div>
+                <div class="weapon-grid" id="weaponGrid">
+                    <!-- Weapons will be populated by JavaScript -->
+                </div>
+                <button class="menu-btn" onclick="showMainMenu()">BACK</button>
+            </div>
+        </div>
+
+        <!-- Settings Screen -->
+        <div id="settingsScreen" class="screen">
+            <div class="settings-container">
+                <h2>SETTINGS</h2>
+                <div class="setting-group">
+                    <label>Master Volume</label>
+                    <input type="range" id="masterVolume" min="0" max="100" value="50">
+                </div>
+                <div class="setting-group">
+                    <label>SFX Volume</label>
+                    <input type="range" id="sfxVolume" min="0" max="100" value="75">
+                </div>
+                <div class="setting-group">
+                    <label>Music Volume</label>
+                    <input type="range" id="musicVolume" min="0" max="100" value="60">
+                </div>
+                <div class="setting-group">
+                    <label>Graphics Quality</label>
+                    <select id="graphicsQuality">
+                        <option value="low">Low</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                <button class="menu-btn" onclick="showMainMenu()">BACK</button>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div id="gameOverScreen" class="screen">
+            <div class="game-over-content">
+                <h2 id="gameOverTitle">MISSION FAILED</h2>
+                <div class="stats">
+                    <p>Score: <span id="finalScore">0</span></p>
+                    <p>Cash Earned: $<span id="finalCash">0</span></p>
+                    <p>Enemies Eliminated: <span id="enemiesKilled">0</span></p>
+                </div>
+                <button class="menu-btn" onclick="restartMission()">RETRY</button>
+                <button class="menu-btn" onclick="showMainMenu()">MAIN MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="audio.js"></script>
+    <script src="vehicles.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

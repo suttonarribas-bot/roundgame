@@ -1,0 +1,42 @@
+{
+  "name": "roundgame-miami-vice",
+  "version": "1.0.0",
+  "description": "Round Game - A Miami Vice-inspired top-down shooter game with realistic mechanics and 80s aesthetics",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve .",
+    "build": "echo 'No build step required for static site'",
+    "dev": "npx serve . -l 3000",
+    "deploy": "netlify deploy --prod"
+  },
+  "keywords": [
+    "game",
+    "miami-vice",
+    "top-down-shooter",
+    "javascript",
+    "html5",
+    "canvas",
+    "synthwave",
+    "80s",
+    "neon",
+    "arcade"
+  ],
+  "author": "Miami Vice Game Developer",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/suttonarribas-bot/roundgame.git"
+  },
+  "homepage": "https://suttonarribas-bot.github.io/roundgame/",
+  "devDependencies": {
+    "serve": "^14.2.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ]
+}
